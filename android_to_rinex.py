@@ -373,6 +373,10 @@ if __name__ == "__main__":
             sys.stderr.write("Constellation unknown. Skipping\n")
             continue
 
+        # Minimum data quality edition
+        if c1 > 30e6 or c1 < 10e6:
+            continue
+
         # If we reached this point it means that all went well. Therefore
         # proceed to store the measurements
         rinex_batch.add(svid, c1, values['Cn0DbHz'])
