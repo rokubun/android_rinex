@@ -422,6 +422,7 @@ if __name__ == "__main__":
 
         # Minimum data quality edition
         if c1 > 30e6 or c1 < 10e6:
+            sys.stderr.write("Measurement [ {0} ] for svid [ {1} ] rejected. Out of bounds\n".format(svid, c1))
             continue
 
         # If we reached this point it means that all went well. Therefore
