@@ -9,6 +9,8 @@ import sys
 
 # Define constants
 SPEED_OF_LIGHT = 299792458.0; # [m/s]
+GPS_L1_FREQ = 154.0 * 10.23e6
+GPS_L1_WAVELENGTH = SPEED_OF_LIGHT / GPS_L1_FREQ
 GPS_WEEKSECS = 604800 # Number of seconds in a week
 NS_TO_S = 1.0e-9
 NS_TO_M = NS_TO_S * SPEED_OF_LIGHT  # Constant to transform from nanoseconds to meters
@@ -137,7 +139,7 @@ def rinex_header(runby=None, marker=None, observer=None, agency=None,
     h += "{0:14.4f}{1:14.4f}{2:14.4f}                  ANTENNA: DELTA H/E/N\n".format(*(antenna_hen))
 
     # Observables 
-    h += "     3    C1    S1    L1                                    # / TYPES OF OBSERV\n"
+    h += "     4    C1    S1    L1    D1                              # / TYPES OF OBSERV\n"
 
 
 
@@ -180,14 +182,22 @@ class RinexBatch:
 
         self.epoch = epoch
 
-    def add(self, svid, c1, s1):
+    def add(self, svid, c1, s1, l1, d1):
         """
         Add measurement to a batch
+
+        - C/A needs to be specified in meters
+        - SNR must be specified as dB-Hz
+        - L1 phase, if provided, needs to be specified in cycles
+        - D1 doppler, expressed in Hz and positive if satellite is approaching,
+          which is opposite of Android API.
         """
 
         self.svids.append(svid)
         self.c1.append(c1)
         self.s1.append(s1)
+        self.l1.append(l1)
+        self.d1.append(d1)
 
         return
 
@@ -221,7 +231,7 @@ class RinexBatch:
             if i > 0 and i % 12 == 0:
                 b += "\n{0:32}".format(" ")
             b += self.svids[i]
-            data += "{0:14.3f}  {1:14.3f}\n".format(self.c1[i], self.s1[i])
+            data += "{0:14.3f}  {1:14.3f}  {2:14.3f}  {3:14.3f}\n".format(self.c1[i], self.s1[i], self.l1[i], self.d1[i])
 
         return b + "\n" + data 
 
@@ -240,8 +250,14 @@ class RinexBatch:
         # List of code ranges
         self.c1 = []
 
+        # List of carrier phases
+        self.l1 = []
+
         # List of C/N0
         self.s1 = []
+
+        # List of C/N0
+        self.d1 = []
 
 
 
@@ -375,6 +391,8 @@ if __name__ == "__main__":
         tRxSeconds = gpssow - (values['TimeOffsetNanos']-values['BiasNanos']) * NS_TO_S
         tTxSeconds = values['ReceivedSvTimeNanos'] * NS_TO_S
 
+        #sys.stderr.write("tRxSeconds: {0:.9f}\n".format(tRxSeconds))
+
         # Compute the travel time, which will be eventually the pseudorange
         tau = tRxSeconds - tTxSeconds
 
@@ -395,7 +413,7 @@ if __name__ == "__main__":
         svid = ''
         prn = int(values['Svid'])
         if values['ConstellationType'] == CONSTELLATION_GPS:
-            svid = 'G{0:2d}'.format(prn)
+            svid = 'G{0:02d}'.format(prn)
         elif values['ConstellationType'] == CONSTELLATION_GLONASS:
             if values['Svid'] >= 93:
                 sys.stderr.write("Receiver is giving Frequency slot number (FSN) "+
@@ -404,12 +422,12 @@ if __name__ == "__main__":
                                  "I am going to skip this measurement\n")
                 continue
             else:
-                svid = 'R{0:2d}'.format(prn)
+                svid = 'R{0:02d}'.format(prn)
 
         elif values['ConstellationType'] == CONSTELLATION_GALILEO:
-            svid = 'E{0:2d}'.format(prn)
+            svid = 'E{0:02d}'.format(prn)
         elif values['ConstellationType'] == CONSTELLATION_BEIDOU:
-            svid = 'C{0:2d}'.format(prn)
+            svid = 'C{0:02d}'.format(prn)
         elif values['ConstellationType'] == CONSTELLATION_QZSS:
             sys.stderr.write("Constellation SBAS not supported\n")
             continue
@@ -425,18 +443,16 @@ if __name__ == "__main__":
             sys.stderr.write("Measurement [ {0} ] for svid [ {1} ] rejected. Out of bounds\n".format(svid, c1))
             continue
 
+        # Process the accumulated delta range (i.e. carrier phase). This
+        # needs to be translated from meters to cycles (i.e. RINEX format
+        # specification)
+        l1 = values['AccumulatedDeltaRangeMeters'] / GPS_L1_WAVELENGTH
+
+        d1 = - values['PseudorangeRateMetersPerSecond'] / GPS_L1_WAVELENGTH
+
         # If we reached this point it means that all went well. Therefore
         # proceed to store the measurements
-        rinex_batch.add(svid, c1, values['Cn0DbHz'])
-
-        #print(values)
-        #print("ReceivedSvTimeNanos: {0:.3f}\n".format(values['ReceivedSvTimeNanos']))
-        #print("FullBiasNanos:       {0:.3f}\n".format(values['FullBiasNanos']))
-        #print("C1: {0:.3f}\n".format(c1))
-        #print("Epoch week: {0} sow: {1}\n".format(gpsweek, gpssow))
-        #print("Tau: {0:.9f}\n".format(tau))
-        #print("C1: {0:.3f}\n".format(c1))
-
+        rinex_batch.add(svid, c1, values['Cn0DbHz'], l1, d1)
 
        
     # Print last batch
