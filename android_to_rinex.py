@@ -391,8 +391,6 @@ if __name__ == "__main__":
         tRxSeconds = gpssow - (values['TimeOffsetNanos']-values['BiasNanos']) * NS_TO_S
         tTxSeconds = values['ReceivedSvTimeNanos'] * NS_TO_S
 
-        #sys.stderr.write("tRxSeconds: {0:.9f}\n".format(tRxSeconds))
-
         # Compute the travel time, which will be eventually the pseudorange
         tau = tRxSeconds - tTxSeconds
 
