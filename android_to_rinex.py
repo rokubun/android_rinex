@@ -366,9 +366,6 @@ if __name__ == "__main__":
             out.write(end_header(epoch))
             first_epoch = False
 
-
-       
-     
         # Check if we need to create a new batch
         if rinex_batch is None:
             rinex_batch = RinexBatch(epoch)
