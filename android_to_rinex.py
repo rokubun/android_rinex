@@ -286,6 +286,13 @@ if __name__ == "__main__":
                         help="Specify the antenna number")
     parser.add_argument('--antenna-type',  metavar='<str>', type=str, default="internal",
                         help="Specify the receiver type")
+    parser.add_argument('--fix-bias', '-b', dest='fix_bias', action='store_true',
+                        help="FIx and hold FullBiasNanos. Use this flag to take "
+                        "the first FullBiasNanos and fix it during all data "
+                        "take. This will avoid pseudorange jumps that would "
+                        "appear if this option is not used. Note that in some "
+                        "cases, it has detected that, while the pseudorange does "
+                        "have these jumps, the carrier phase does not have it.")
     parser.add_argument('--integerize', '-i', dest='integerize', action='store_true',
                         default=False,
                         help="Integerize epochs to nearest integer second. If "+
@@ -319,6 +326,9 @@ if __name__ == "__main__":
     # Rinex Batch
     rinex_batch = None
 
+    # Full bias nanos to be used in the process
+    fullbiasnanos = None
+
     # Loop over the file looking for Raw lines
     for line in fh:
 
@@ -346,10 +356,16 @@ if __name__ == "__main__":
         except Exception as e:
             sys.stderr.write("Invalid state [ {0} ] for measurement: [ {1} ]\n".format(e, line))
 
+
+        # Set the fullbiasnanos if not set or if we need to update the full bias
+        # nanos at each epoch 
+        if fullbiasnanos is None or not args.fix_bias :
+            fullbiasnanos = float(values['FullBiasNanos'])
+
         # Compute the GPS week number as well as the time within the week of
         # the reception time (i.e. clock epoch)
-        gpsweek = math.floor(-float(values['FullBiasNanos'])* NS_TO_S / GPS_WEEKSECS)
-        gpssow = (values['TimeNanos'] - values['FullBiasNanos']) * NS_TO_S - gpsweek * GPS_WEEKSECS
+        gpsweek = math.floor(-fullbiasnanos * NS_TO_S / GPS_WEEKSECS)
+        gpssow = (values['TimeNanos'] - fullbiasnanos) * NS_TO_S - gpsweek * GPS_WEEKSECS
 
         # Fractional part of the integer seconds
         frac = 0.0
