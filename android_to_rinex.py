@@ -418,7 +418,7 @@ if __name__ == "__main__":
         # Check if the range needs to be modified with the range rate in
         # order to make it consistent with the timestamp
         if args.integerize:
-            c1 += frac * values['PseudorangeRateMetersPerSecond']
+            c1 -= frac * values['PseudorangeRateMetersPerSecond']
 
         # Add measurements into the batch (to be printed when the data changes epoch)
         svid = ''
