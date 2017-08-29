@@ -284,6 +284,8 @@ if __name__ == "__main__":
                         help="Specify the receiver version")
     parser.add_argument('--antenna-number',  metavar='<str>', type=str, default="UNKN",
                         help="Specify the antenna number")
+    parser.add_argument('--skip-edit', dest='skip_edit', action='store_true',
+                        help="Skip pseudorange data edit that checks that the range is within bounds")
     parser.add_argument('--antenna-type',  metavar='<str>', type=str, default="internal",
                         help="Specify the receiver type")
     parser.add_argument('--fix-bias', '-b', dest='fix_bias', action='store_true',
@@ -365,7 +367,8 @@ if __name__ == "__main__":
         # Compute the GPS week number as well as the time within the week of
         # the reception time (i.e. clock epoch)
         gpsweek = math.floor(-fullbiasnanos * NS_TO_S / GPS_WEEKSECS)
-        gpssow = (values['TimeNanos'] - fullbiasnanos) * NS_TO_S - gpsweek * GPS_WEEKSECS
+        local_est_GPS_time = values['TimeNanos'] - (fullbiasnanos + values['BiasNanos'])
+        gpssow = local_est_GPS_time * NS_TO_S - gpsweek * GPS_WEEKSECS
 
         # Fractional part of the integer seconds
         frac = 0.0
@@ -401,7 +404,7 @@ if __name__ == "__main__":
             values['BiasNanos'] = 0.0
 
         # Compute the reception and transmission times
-        tRxSeconds = gpssow - (values['TimeOffsetNanos']-values['BiasNanos']) * NS_TO_S
+        tRxSeconds = gpssow - values['TimeOffsetNanos'] * NS_TO_S
         tTxSeconds = values['ReceivedSvTimeNanos'] * NS_TO_S
 
         # Compute the travel time, which will be eventually the pseudorange
@@ -450,7 +453,7 @@ if __name__ == "__main__":
             continue
 
         # Minimum data quality edition
-        if c1 > 30e6 or c1 < 10e6:
+        if not args.skip_edit and (c1 > 30e6 or c1 < 10e6):
             sys.stderr.write("Measurement [ {0} ] for svid [ {1} ] rejected. Out of bounds\n".format(svid, c1))
             continue
 
