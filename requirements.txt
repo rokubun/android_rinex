@@ -1,0 +1,2 @@
+# Requirements fetched from setup.py install_requires option
+.

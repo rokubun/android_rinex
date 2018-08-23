@@ -19,13 +19,28 @@ tablet:
 This file can be used with this tool to generate a RINEX file that can be
 then used in GNSS data processing software such as e.g. RTKLib.
 
+Installation
+------------
+
+This package has been built using Pyhton's setuptools. As such, you can 
+install it into your system by issuing the command
+
+    python setup.py install
+
+You might need the root password to issue this command. Alternatively, you can
+install in a non-default directory by specifying the install path with the 
+`--prefix` option:
+
+    python setup.py install --prefix /path/to/instal
+
+
 Examples
 --------
 
 The script has a small help that explains the different options of the 
 program. This help is accessed through the command:
 
-    android_to_rinex.py -h
+    gnsslogger_to_rnx -h
 
 There are several options that allow the user to change several standard
 RINEX fields ('MARKER NAME', 'RECEIVER TYPE', ...)
@@ -35,12 +50,12 @@ Some execution examples follow:
 (a) Process the data file and generate a RINEX file in the standard output 
     (discard the error messages)
 
-    android_to_rinex.py data/pseudoranges_log_2017_07_17_13_46_25.txt 2> /dev/null
+    gnsslogger_to_rnx data/pseudoranges_log_2017_07_17_13_46_25.txt 2> /dev/null
 
 (b) Process the data and save the results into a specified file name (and 
     disregard warning messages)
 
-    android_to_rinex.py -o nex91980.17o data/pseudoranges_log_2017_07_17_13_46_25.txt 2> /dev/null
+    gnsslogger_to_rnx -o nex91980.17o data/pseudoranges_log_2017_07_17_13_46_25.txt 2> /dev/null
 
 (b) Process the data, trying to "integerize" the observations to the nearest
     time stamp (i.e. integerize the time stamp to the closest second and
@@ -49,7 +64,7 @@ Some execution examples follow:
     be done to the phase, but strictly speaking we would need the Doppler. not
     the PseudoRangeRate measurements.
 
-    android_to_rinex.py -i -o nex91980.17o data/pseudoranges_log_2017_07_17_13_46_25.txt 2> /dev/null
+    gnsslogger_to_rnx -i -o nex91980.17o data/pseudoranges_log_2017_07_17_13_46_25.txt 2> /dev/null
 
     This option might be useful to process data from various smartphones at 
     once.
@@ -59,7 +74,7 @@ Some execution examples follow:
     This avoids the 256 ns jumps each 3 seconds that create a code-phase
     divergence due to the clock.
 
-    android_to_rinex.py -b -o nex91980.17o data/pseudoranges_log_2017_07_17_13_46_25.txt 2> /dev/null
+    gnsslogger_to_rnx -b -o nex91980.17o data/pseudoranges_log_2017_07_17_13_46_25.txt 2> /dev/null
 
 
 
