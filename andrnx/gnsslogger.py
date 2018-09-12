@@ -244,6 +244,8 @@ def get_rnx_band_from_freq(frequency):
     1
     >>> get_rnx_band_from_freq(1176450050.0)
     5
+    >>> get_rnx_band_from_freq(1561097980.0)
+    2
     """
 
     # Backwards compatibility with empty fields (assume GPS L1)
@@ -253,15 +255,18 @@ def get_rnx_band_from_freq(frequency):
         return 1
     elif ifreq == 115:
         return 5
+    elif ifreq == round(152.6):  # Beidou 'B1' frequency
+        return 2  # Rinex 3 band for B1 is 2
     else:
-        raise ValueError("Cannot get Rinex frequency band from frequency [ {0} ]\n".format(frequency))
+        raise ValueError("Cannot get Rinex frequency band from frequency [ {0} ]. "
+        "Got the following integer frequency multiplier [ {1:.2f} ]\n".format(frequency, ifreq))
 
     return ifreq
 
 # ------------------------------------------------------------------------------
 
 
-def get_rnx_attr(band):
+def get_rnx_attr(band, constellation='G'):
     """
     Generate the RINEX 3 attribute from a given band. Assumes 'C' for L1/E1
     frequency and 'X' for L5/E5a frequency. For E5a it assumes I+Q tracking.
@@ -270,6 +275,9 @@ def get_rnx_attr(band):
     attr = 'C'
 
     if band == 5:
+        attr = 'X'
+
+    if band ==2 and constellation=='C': # Beidou B1
         attr = 'X'
 
     return attr
@@ -288,15 +296,15 @@ def get_obscode(measurement):
     """
     Obtain the measurement code (RINEX 3 format)
 
-    >>> get_obscode({'CarrierFrequencyHz': 1575420030.0})
+    >>> get_obscode({'CarrierFrequencyHz': 1575420030.0, 'ConstellationType': 1})
     '1C'
-    >>> get_obscode({'CarrierFrequencyHz': 1176450050.0})
+    >>> get_obscode({'CarrierFrequencyHz': 1176450050.0, 'ConstellationType': 5})
     '5X'
     """
 
     band = get_rnx_band_from_freq(get_frequency(measurement))
 
-    attr = get_rnx_attr(band)
+    attr = get_rnx_attr(band, constellation=get_constellation(measurement))
 
     return '{0}{1}'.format(band, attr)
 
@@ -322,7 +330,7 @@ def get_obslist(batches):
 
                 obscode = get_obscode(measurement)
 
-                constellation = CONSTELLATION_LETTER[measurement['ConstellationType']]
+                constellation = get_constellation(measurement)
 
                 if constellation not in obslist:
                         obslist[constellation] = []
@@ -357,6 +365,26 @@ def check_state(state):
 
 # ------------------------------------------------------------------------------
 
+def get_constellation(measurement):
+    """
+    Return the constellation letter from a given measurement
+
+    >>> get_constellation({'ConstellationType': 1})
+    'G'
+    >>> get_constellation({'ConstellationType': 6})
+    'E'
+    >>> get_constellation({'ConstellationType': 3})
+    'R'
+    >>> get_constellation({'ConstellationType': 5})
+    'C'
+    """
+
+    ctype = measurement['ConstellationType']
+
+    return CONSTELLATION_LETTER[ctype]
+
+# ------------------------------------------------------------------------------
+
 def get_satname(measurement):
     """
     Obtain the satellite name from a GNSS Logger measurement
@@ -369,15 +397,15 @@ def get_satname(measurement):
     'R24'
     """
 
-    ctype = measurement['ConstellationType']
-    c = CONSTELLATION_LETTER[ctype]
+    c = get_constellation(measurement)
+
     svid = measurement['Svid']
 
     satname = '{0}{1:02d}'.format(c, svid)
 
     # Make sure that we report GLONASS OSN (PRN) instead of FCN
     # https://developer.android.com/reference/android/location/GnssStatus.html#getSvid(int)
-    if svid > 50 and ctype == CONSTELLATION_GLONASS:
+    if svid > 50 and c == CONSTELLATION_LETTER[CONSTELLATION_GLONASS]:
         raise ValueError("-- WARNING: Skipping measurement for GLONASS sat "
                          "without OSN [ {0} ]".format(satname))
 
