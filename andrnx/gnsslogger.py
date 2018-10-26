@@ -269,16 +269,16 @@ def get_rnx_band_from_freq(frequency):
 def get_rnx_attr(band, constellation='G'):
     """
     Generate the RINEX 3 attribute from a given band. Assumes 'C' for L1/E1
-    frequency and 'X' for L5/E5a frequency. For E5a it assumes I+Q tracking.
+    frequency and 'Q' for L5/E5a frequency. For E5a it assumes Q tracking.
     """
 
     attr = 'C'
 
     if band == 5:
-        attr = 'X'
+        attr = 'Q'
 
     if band ==2 and constellation=='C': # Beidou B1
-        attr = 'X'
+        attr = 'I'
 
     return attr
 
@@ -316,8 +316,8 @@ def get_obslist(batches):
     per each constellation, e.g.
 
     obs = {
-        'G' : [C1C, L1C, D1C, S1C, C5X],
-        'E' : [C1C, L1C, D1C, C5X],
+        'G' : [C1C, L1C, D1C, S1C, C5Q],
+        'E' : [C1C, L1C, D1C, C5Q],
         'R' : [C1P, C2P]
     }
     """
