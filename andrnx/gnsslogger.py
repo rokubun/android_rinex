@@ -249,7 +249,7 @@ def get_rnx_band_from_freq(frequency):
     # Backwards compatibility with empty fields (assume GPS L1)
     ifreq = 154 if frequency == '' else round(frequency / 10.23e6)
 
-    if ifreq >= 154:
+    if ifreq >= 152: #in some RAW datasets there are GLO freq below 154
         return 1
     elif ifreq == 115:
         return 5
