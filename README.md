@@ -19,6 +19,26 @@ tablet:
 This file can be used with this tool to generate a RINEX file that can be
 then used in GNSS data processing software such as e.g. RTKLib.
 
+Standalone test
+------------
+
+If you are developing the code it might be easier to run it as a standalone library.
+
+* in Linux this can be done via
+    ```
+    export PYTHONPATH=$PWD;$PYTHONPATH
+    bin/gnsslogger_to_rnx
+    ```
+* in Windows, most of the time PYTHONPATH is not set so its easier to use batch file
+
+    gnsslogger_to_rnx.bat -o nex91980.17o .\data\pseudoranges_log_2017_07_17_13_46_25.txt
+
+That is
+
+    gnsslogger_to_rnx.bat -o OUTPUT FILE INPUT FILE
+
+
+
 Installation
 ------------
 
