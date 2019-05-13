@@ -453,7 +453,10 @@ def process(measurement, fullbiasnanos=None, integerize=False, pseudorange_bias=
     except ValueError:
         raise ValueError("-- WARNING: Invalid value of TimeNanos or satellite  [ {0} ]\n".format(satname))
 
-    biasnanos = measurement['BiasNanos']
+    try:
+        biasnanos = float(measurement['BiasNanos'])
+    except ValueError:
+        biasnanos = 0.0
 
     # Compute the GPS week number as well as the time within the week of
     # the reception time (i.e. clock epoch)
@@ -468,14 +471,9 @@ def process(measurement, fullbiasnanos=None, integerize=False, pseudorange_bias=
     epoch = GPSTIME + datetime.timedelta(weeks=gpsweek, seconds=gpssow-frac)
 
     try:
-        timeoffsetnanos = measurement['TimeOffsetNanos']
+        timeoffsetnanos = float(measurement['TimeOffsetNanos'])
     except ValueError:
         timeoffsetnanos = 0.0
-
-    try:
-        biasnanos = measurement['BiasNanos']
-    except ValueError:
-        biasnanos = 0.0
 
     # Compute the reception and transmission times
     tRxSeconds = gpssow - timeoffsetnanos * NS_TO_S
