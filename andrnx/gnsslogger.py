@@ -9,19 +9,37 @@ import sys
 
 # Flags to check wether the measurement is correct or not
 # https://developer.android.com/reference/android/location/GnssMeasurement.html#getState()
-STATE_CODE_LOCK = int(0x00000001)
+STATE_2ND_CODE_LOCK = int(0x00010000)
+STATE_BDS_D2_BIT_SYNC = int(0x00000100)
+STATE_BDS_D2_SUBFRAME_SYNC = int(0x00000200)
 STATE_BIT_SYNC = int(0x00000002)
+STATE_CODE_LOCK = int(0x00000001)
+STATE_GAL_E1BC_CODE_LOCK = int(0x00000400)
+STATE_GAL_E1B_PAGE_SYNC = int(0x00001000)
+STATE_GAL_E1C_2ND_CODE_LOCK = int(0x00000800)
+STATE_GLO_STRING_SYNC = int(0x00000040)
+STATE_GLO_TOD_DECODED = int(0x00000080)
+STATE_GLO_TOD_KNOWN = int(0x00008000)
+STATE_MSEC_AMBIGUOUS = int(0x00000010)
+STATE_SBAS_SYNC = int(0x00002000)
+STATE_SUBFRAME_SYNC = int(0x00000004)
+STATE_SYMBOL_SYNC = int(0x00000020)
 STATE_TOW_DECODED = int(0x00000008)
+STATE_TOW_KNOWN = int(0x00004000)
+STATE_UNKNOWN = int(0x00000000)
+
 
 # Define constants
-SPEED_OF_LIGHT = 299792458.0; # [m/s]
-GPS_WEEKSECS = 604800 # Number of seconds in a week
+SPEED_OF_LIGHT = 299792458.0  # [m/s]
+GPS_WEEKSECS = 604800  # Number of seconds in a week
 NS_TO_S = 1.0e-9
 NS_TO_M = NS_TO_S * SPEED_OF_LIGHT  # Constant to transform from nanoseconds to meters
-
+BDST_TO_GPST = 14  # Leap seconds difference between BDST and GPST
+GLOT_TO_UTC = 10800 # Time difference between GLOT and UTC in seconds
 # Origin of the GPS time scale
 GPSTIME = datetime.datetime(1980, 1, 6)
-
+DAYSEC = 86400  # Number of seconds in a day
+CURRENT_GPS_LEAP_SECOND = 18
 OBS_LIST = ['C', 'L', 'D', 'S']
 
 EPOCH_STR = 'epoch'
@@ -148,7 +166,6 @@ class GnssLog(object):
         'Svid' : int
     }
 
-
     def __init__(self, filename):
         """
         """
@@ -159,7 +176,6 @@ class GnssLog(object):
         self.filename = filename
 
         self.header = GnssLogHeader(self.filename)
-
 
     def __field_conversion__(self, fname, valuestr):
         """
@@ -176,8 +192,6 @@ class GnssLog(object):
         except ValueError:
                 return valuestr
 
-
-
     def __parse_line__(self, line):
         """
         """
@@ -191,7 +205,6 @@ class GnssLog(object):
                                         for i in range(len(line_fields) - 1)}
 
         return fields
-
 
     def raw_batches(self):
         """
@@ -350,16 +363,128 @@ def get_obslist(batches):
 
 # ------------------------------------------------------------------------------
 
-def check_state(state):
+
+def check_state(measurement):
     """
     Checks if measurement is valid or not based on the Sync bits
     """
+    # Obtain state, constellation type and frquency value to apply proper sync state
+    state = measurement['State']
+    constellation = measurement['ConstellationType']
+    frequency = get_frequency(measurement)
+    frequency_band = get_rnx_band_from_freq(frequency)
 
-    if (state & STATE_CODE_LOCK) == 0:
-        raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_CODE_LOCK [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_CODE_LOCK))
+    # Filtering measurements for GPS constellation (common and non optional for L1 and L5 signals)
+    if constellation == CONSTELLATION_GPS:
+        if (state & STATE_CODE_LOCK) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_CODE_LOCK [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_CODE_LOCK))
 
-    if (state & STATE_TOW_DECODED) == 0:
-        raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_TOW_DECODED [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_TOW_DECODED))
+        if (state & STATE_TOW_DECODED) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_TOW_DECODED [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_TOW_DECODED))
+
+        if (state & STATE_BIT_SYNC) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_BIT_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_BIT_SYNC))
+
+        if (state & STATE_SUBFRAME_SYNC) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_SUBFRAME_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_SUBFRAME_SYNC))
+
+    # Filtering measurements for SBAS constellation
+    elif constellation == CONSTELLATION_SBAS:
+        if (state & STATE_CODE_LOCK) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_CODE_LOCK [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_CODE_LOCK))
+
+        if (state & STATE_TOW_DECODED) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_TOW_DECODED [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_TOW_DECODED))
+
+        if (state & STATE_BIT_SYNC) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_BIT_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_BIT_SYNC))
+
+        if (state & STATE_SYMBOL_SYNC) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_SYMBOL_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_SYMBOL_SYNC))
+
+        if (state & STATE_SBAS_SYNC) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_SBAS_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_SBAS_SYNC))
+
+    # Filtering measurements for GLO constellation
+    elif constellation == CONSTELLATION_GLONASS:
+        if (state & STATE_CODE_LOCK) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_CODE_LOCK [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_CODE_LOCK))
+
+        # if (state & STATE_SYMBOL_SYNC) == 0:
+        #    raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_SYMBOL_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_SYMBOL_SYNC))
+
+        if (state & STATE_BIT_SYNC) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_BIT_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_BIT_SYNC))
+
+        if (state & STATE_GLO_TOD_DECODED) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_GLO_TOD_DECODED [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_GLO_TOD_DECODED))
+
+        if (state & STATE_GLO_STRING_SYNC) == 0:
+            raise ValueError(
+                "State [ 0x{0:2x} {0:8b} ] has STATE_GLO_STRING_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_GLO_STRING_SYNC))
+
+    elif constellation == CONSTELLATION_QZSS:
+        if (state & STATE_CODE_LOCK) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_CODE_LOCK [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_CODE_LOCK))
+
+        if (state & STATE_TOW_DECODED) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_TOW_DECODED [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_TOW_DECODED))
+
+        if (state & STATE_BIT_SYNC) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_BIT_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_BIT_SYNC))
+
+        if (state & STATE_SUBFRAME_SYNC) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_SUBFRAME_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_SUBFRAME_SYNC))
+
+    elif constellation == CONSTELLATION_BEIDOU:
+        if (state & STATE_CODE_LOCK) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_CODE_LOCK [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_CODE_LOCK))
+
+        if (state & STATE_TOW_DECODED) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_TOW_DECODED [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_TOW_DECODED))
+
+        if (state & STATE_BIT_SYNC) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_BIT_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_BIT_SYNC))
+
+        if (state & STATE_SUBFRAME_SYNC) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_SUBFRAME_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_SUBFRAME_SYNC))
+
+    elif constellation == CONSTELLATION_GALILEO:
+        if frequency_band == 1:
+            if (state & STATE_GAL_E1BC_CODE_LOCK) == 0:
+                raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_GAL_E1BC_CODE_LOCK [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_GAL_E1BC_CODE_LOCK))
+
+            if (state & STATE_TOW_DECODED) == 0:
+                raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_TOW_DECODED [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_TOW_DECODED))
+
+            if (state & STATE_BIT_SYNC) == 0:
+                raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_BIT_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_BIT_SYNC))
+
+            if (state & STATE_GAL_E1B_PAGE_SYNC) == 0:
+                raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_GAL_E1B_PAGE_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_GAL_E1B_PAGE_SYNC))
+        # Measurement is E5a
+        elif frequency_band == 5:
+            if (state & STATE_CODE_LOCK) == 0:
+                raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_CODE_LOCK [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_CODE_LOCK))
+
+            if (state & STATE_TOW_DECODED) == 0:
+                raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_TOW_DECODED [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_TOW_DECODED))
+
+            if (state & STATE_BIT_SYNC) == 0:
+                raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_BIT_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_BIT_SYNC))
+
+            if (state & STATE_SUBFRAME_SYNC) == 0:
+                raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_SUBFRAME_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_SUBFRAME_SYNC))
+
+    elif constellation == CONSTELLATION_UNKNOWN:
+        if (state & STATE_CODE_LOCK) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_CODE_LOCK [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_CODE_LOCK))
+
+        if (state & STATE_TOW_DECODED) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_TOW_DECODED [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_TOW_DECODED))
+
+    else:
+        raise ValueError("ConstellationType [ 0x{0:2x} {0:8b} ] is not valid".format(constellation))
 
     return True
 
@@ -437,9 +562,9 @@ def process(measurement, fullbiasnanos=None, integerize=False, pseudorange_bias=
 
     obscode = get_obscode(measurement)
 
-    # Skip this measurement if no synched
+    # Skip this measurement if no sync
     try:
-        check_state(measurement['State'])
+        check_state(measurement)
     except ValueError as e:
         sys.stderr.write("-- WARNING: {0} for satellite [ {1} ]\n".format(e, satname))
 
@@ -468,23 +593,37 @@ def process(measurement, fullbiasnanos=None, integerize=False, pseudorange_bias=
     frac = gpssow - int(gpssow+0.5) if integerize else 0.0
 
     # Convert the epoch to Python's buiit-in datetime class
-    epoch = GPSTIME + datetime.timedelta(weeks=gpsweek, seconds=gpssow-frac)
+    gpst_epoch = GPSTIME + datetime.timedelta(weeks=gpsweek, seconds=gpssow-frac)
 
     try:
         timeoffsetnanos = float(measurement['TimeOffsetNanos'])
     except ValueError:
         timeoffsetnanos = 0.0
 
-    # Compute the reception and transmission times
+    # Compute the reception times
     tRxSeconds = gpssow - timeoffsetnanos * NS_TO_S
-    tTxSeconds = measurement['ReceivedSvTimeNanos'] * NS_TO_S
 
-    # Compute the travel time, which will be eventually the pseudorange
-    tau = tRxSeconds - tTxSeconds
+    # Compute transmit time (depends on constellation of origin)
+    constellation = measurement['ConstellationType']
+    # GLOT is given as TOD, need to change to TOW
+    if constellation == CONSTELLATION_GLONASS:
+        # Compute the UTC time
+        tod_secs = measurement['ReceivedSvTimeNanos'] * NS_TO_S
+        tTxSeconds = glot_to_gpst(gpst_epoch, tod_secs)
+        # Compute the travel time, which will be eventually the pseudorange
+        tau = check_week_crossover(tRxSeconds, tTxSeconds)
 
-    # Check the week rollover, for measurements near the week transition
-    if tau < 0:
-        tau += GPS_WEEKSECS
+    # BDST uses different epoch as GPS
+    elif constellation == CONSTELLATION_BEIDOU:
+        tTxSeconds = measurement['ReceivedSvTimeNanos'] * NS_TO_S + BDST_TO_GPST
+        # Compute the travel time, which will be eventually the pseudorange
+        tau = check_week_crossover(tRxSeconds, tTxSeconds)
+
+    # GPS, QZSS, GAL and SBAS share the same epoch time
+    else:
+        tTxSeconds = measurement['ReceivedSvTimeNanos'] * NS_TO_S
+        # Compute the travel time, which will be eventually the pseudorange
+        tau = check_week_crossover(tRxSeconds, tTxSeconds)
 
     # Compute the range as the difference between the received time and
     # the transmitted time
@@ -506,13 +645,121 @@ def process(measurement, fullbiasnanos=None, integerize=False, pseudorange_bias=
 
     cn0 = measurement['Cn0DbHz']
 
-    return { EPOCH_STR : epoch,
+    aa= {EPOCH_STR: gpst_epoch,
+        satname: {'C' + obscode: range,
+              'L' + obscode: cphase,
+              'D' + obscode: doppler,
+              'S' + obscode: cn0}}
+
+    return { EPOCH_STR : gpst_epoch,
              satname : { 'C' + obscode : range,
                          'L' + obscode : cphase,
                          'D' + obscode : doppler,
                          'S' + obscode : cn0}}
 
 # ------------------------------------------------------------------------------
+
+def get_leap_seconds(current_epoch):
+    """
+    Computes the number of leap seconds passed since the start of GPST 
+    :param current_epoch: current datetime value representing the measurements epoch
+    :return: number of leap seconds since GPST
+    """
+    return None
+
+# ------------------------------------------------------------------------------
+
+
+def glot_to_gpst(gpst_current_epoch, tod_seconds):
+    """
+    Converts GLOT to GPST
+    :param gpst_current_epoch: Current epoch of the measurement in GPST
+    :param tod_seconds: Time of days as number of seconds
+    :return: Time of week in seconds
+    """
+    (tod_sec_frac, tod_sec) = math.modf(tod_seconds);
+    tod_sec = int(tod_sec)
+
+    # Get the GLONASS epoch given the current GPS time
+    glo_epoch = datetime.datetime(year=gpst_current_epoch.year,
+                                  month=gpst_current_epoch.month,
+                                  day=gpst_current_epoch.day,
+                                  hour=gpst_current_epoch.hour,
+                                  minute=gpst_current_epoch.minute,
+                                  second=gpst_current_epoch.second)\
+                                  + datetime.timedelta(
+                                  hours=3,
+                                  seconds=-CURRENT_GPS_LEAP_SECOND)
+    # Adjust the GLONASS time with the TOD measurements
+    glo_tod = datetime.datetime(year=glo_epoch.year,
+                                month=glo_epoch.month,
+                                day=glo_epoch.day) + datetime.timedelta(seconds=tod_sec)
+
+    # Convert the GLONASS time to the GPS time epoch
+    glo_gpst = glo_tod + datetime.timedelta(hours=-3,
+                                            seconds=CURRENT_GPS_LEAP_SECOND)
+
+    # The day of week in seconds needs to reflect the time passed before the current day starts
+    day_of_week_sec = (glo_gpst.isoweekday()) * DAYSEC
+
+    # Compute seconds of day (correct UTC offset and Leap seconds)
+    day_sec = tod_seconds - GLOT_TO_UTC + CURRENT_GPS_LEAP_SECOND
+
+    # Compute time of week in seconds
+    tow_sec = day_of_week_sec + day_sec
+
+    return tow_sec
+
+# ------------------------------------------------------------------------------
+
+
+def check_week_crossover(tRxSeconds, tTxSeconds):
+    """
+    Checks time propagation time for week crossover
+    :param tRxSeconds: received time in seconds of week
+    :param tTxSeconds: transmitted time in seconds of week
+    :return: corrected propagation time
+
+    """
+
+    tau = tRxSeconds - tTxSeconds
+    if tau > GPS_WEEKSECS / 2:
+        del_sec = round(tau/GPS_WEEKSECS)*GPS_WEEKSECS
+        rho_sec = tau - del_sec
+
+        if rho_sec > 10:
+            tau = 0.0
+        else:
+            tau = rho_sec
+
+    return tau
+
+# ------------------------------------------------------------------------------
+
+
+def check_day_crossover(tRxSeconds, tTxSeconds):
+    """
+    Checks time propagation time for day crossover
+    :param tRxSeconds: received time in seconds of week
+    :param tTxSeconds: transmitted time in seconds of week
+    :return: corrected propagation time
+
+    """
+
+    tau = tRxSeconds - tTxSeconds
+    if tau > DAYSEC / 2:
+        del_sec = round(tau/DAYSEC)*DAYSEC
+        rho_sec = tau - del_sec
+
+        if rho_sec > 10:
+            tau = 0.0
+        else:
+            tau = rho_sec
+
+    return tau
+
+# ------------------------------------------------------------------------------
+
 
 def merge(measdict):
     """
