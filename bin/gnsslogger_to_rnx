@@ -74,18 +74,31 @@ if __name__ == "__main__":
     proc = lambda m : alogger.process(m,
                                       fullbiasnanos=fullbiasnanos,
                                       integerize=args.integerize,
-                                       pseudorange_bias=args.pseudorange_bias)
+                                      pseudorange_bias=args.pseudorange_bias)
+
     batches = [alogger.merge([proc(m) for m in rm]) for rm in raw_batches]
 
+    # Get a list of the available observations
     obslist = alogger.get_obslist(raw_batches)
 
+    # Get GLONASS freq channel and prn list
+    glo_freq_chns = alogger.get_glo_freq_chn_list(raw_batches)
+
     # Write header and body
-    header = arinex.write_header(obslist, batches[0]['epoch'], lastepoch=batches[-1]['epoch'],
+    header = arinex.write_header(obslist,
+                                 firstepoch=batches[0]['epoch'],
+                                 lastepoch=batches[-1]['epoch'],
                                  markername=args.marker_name,
-                                 observer=args.observer, agency=args.agency,
-                                 rec=args.receiver_number, rec_type=args.receiver_type, rec_version=args.receiver_version,
-                                 antenna=args.antenna_number, ant_type=args.antenna_type,
-                                 pos=[0.0, 0.0, 0.0], hen=[0.0, 0.0, 0.0])
+                                 observer=args.observer,
+                                 agency=args.agency,
+                                 rec=args.receiver_number,
+                                 rec_type=args.receiver_type,
+                                 rec_version=args.receiver_version,
+                                 antenna=args.antenna_number,
+                                 ant_type=args.antenna_type,
+                                 pos=[0.0, 0.0, 0.0],
+                                 hen=[0.0, 0.0, 0.0],
+                                 glo_slot_freq_chns = glo_freq_chns)
     body = ''.join([arinex.write_obs(b, obslist) for b in batches])
 
     # Write to output
@@ -94,6 +107,5 @@ if __name__ == "__main__":
     else:
         with open(args.output, "w") as fh:
             fh.write(header + body)
-
 
     sys.exit(0)

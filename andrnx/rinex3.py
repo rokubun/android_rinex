@@ -198,6 +198,39 @@ def __write_rnx3_header_lastobs__(epoch):
 
 # -----------------------------------------------------------------------------
 
+def __write_rnx3_header_glo_slot_frq_chn__(glo_slot_freq_chns):
+    """
+
+    :param glo_slot_freq_chns:
+    :return: RINEX V3.03 lines with GLO satellites and frequency numbers
+    """
+
+    if glo_slot_freq_chns is {}:
+        return ""
+
+    TAIL = "GLONASS SLOT / FRQ #"
+
+    # Gets the number of satellites in the list
+    num_sats = len(glo_slot_freq_chns)
+
+    # Number of satellites in list
+    res = "{0:3d} ".format(num_sats)
+
+    # Satellite numbers + frequency numbers
+    for sat in glo_slot_freq_chns:
+
+        res += "{0:3s} {1:2d} ".format(sat, glo_slot_freq_chns[sat])
+        if len(res) == 60:
+            res += "{0:60s}{1}\n".format(res, TAIL)
+            res += "    "
+
+    # Tail specs
+    res = "{0:60s}{1}\n".format(res, TAIL)
+
+    return res
+
+# -----------------------------------------------------------------------------
+
 def __write_rnx3_header_end__():
     """
     """
@@ -210,11 +243,13 @@ def __write_rnx3_header_end__():
 
 # ------------------------------------------------------------------------------
 
+
 def write_header(obslist, firstepoch, ver=3.03, typ="O", pgm="Rokubun", markername="UNKN",
                  markertype="SMARTPHONE", observer="unknown", agency="unknown",
                  rec="unknown", rec_type="unknown", rec_version="unkown",
                  antenna="unknown", ant_type="unknown",
-                 pos=[0.0, 0.0, 0.0], hen=[0.0, 0.0, 0.0], lastepoch=None):
+                 pos=[0.0, 0.0, 0.0], hen=[0.0, 0.0, 0.0], lastepoch=None,
+                 glo_slot_freq_chns={}):
     """
     """
 
@@ -230,6 +265,8 @@ def write_header(obslist, firstepoch, ver=3.03, typ="O", pgm="Rokubun", markerna
     res += __write_rnx3_header_obslist__(obslist)
     res += __write_rnx3_header_firstobs__(firstepoch)
     res += __write_rnx3_header_lastobs__(lastepoch)
+    # res += __write_rnx3_header_lastobs__(sys_phase_shift)
+    res += __write_rnx3_header_glo_slot_frq_chn__(glo_slot_freq_chns)
     res += __write_rnx3_header_end__()
 
     return res
@@ -267,7 +304,8 @@ def write_obs(mdict, obslist, flag=0):
             except KeyError:
                 meas = 0.0
 
-            if meas > 30e6:
+            # BeiDou satellites can have long ranges if GEO satellites are used
+            if meas > 40e6:
                 meas = 0.0
 
             res += '{0:14.3f}00'.format(meas)
