@@ -35,7 +35,7 @@ GPS_WEEKSECS = 604800  # Number of seconds in a week
 NS_TO_S = 1.0e-9
 NS_TO_M = NS_TO_S * SPEED_OF_LIGHT  # Constant to transform from nanoseconds to meters
 BDST_TO_GPST = 14  # Leap seconds difference between BDST and GPST
-GLOT_TO_UTC = 10800 # Time difference between GLOT and UTC in seconds
+GLOT_TO_UTC = 10800  # Time difference between GLOT and UTC in seconds
 # Origin of the GPS time scale
 GPSTIME = datetime.datetime(1980, 1, 6)
 DAYSEC = 86400  # Number of seconds in a day
@@ -43,6 +43,9 @@ CURRENT_GPS_LEAP_SECOND = 18
 OBS_LIST = ['C', 'L', 'D', 'S']
 
 EPOCH_STR = 'epoch'
+
+GLO_L1_CENTER_FREQ = 1.60200e9
+GLO_L1_DFREQ = 0.56250e6
 
 # Constellation types
 CONSTELLATION_GPS = 1
@@ -364,6 +367,32 @@ def get_obslist(batches):
 # ------------------------------------------------------------------------------
 
 
+def get_glo_freq_chn_list(batches):
+    """
+    Obtain the GLO frequency channel list (array of RINEX 3.0 observable codes), particularized
+    per each constellation
+
+    """
+
+    freq_chn_list = {}
+
+    for batch in batches:
+
+        for measurement in batch:
+
+            if measurement['ConstellationType'] == CONSTELLATION_GLONASS:
+                sat = get_satname(measurement)
+
+                if sat not in freq_chn_list:
+                    freq = get_frequency(measurement)
+                    freq_chn = round((freq - GLO_L1_CENTER_FREQ)/GLO_L1_DFREQ)
+                    freq_chn_list[sat] = freq_chn
+
+    return freq_chn_list
+
+# ------------------------------------------------------------------------------
+
+
 def check_state(measurement):
     """
     Checks if measurement is valid or not based on the Sync bits
@@ -644,12 +673,6 @@ def process(measurement, fullbiasnanos=None, integerize=False, pseudorange_bias=
     doppler = - measurement['PseudorangeRateMetersPerSecond'] / wavelength
 
     cn0 = measurement['Cn0DbHz']
-
-    aa= {EPOCH_STR: gpst_epoch,
-        satname: {'C' + obscode: range,
-              'L' + obscode: cphase,
-              'D' + obscode: doppler,
-              'S' + obscode: cn0}}
 
     return { EPOCH_STR : gpst_epoch,
              satname : { 'C' + obscode : range,
