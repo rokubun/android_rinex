@@ -231,6 +231,27 @@ def __write_rnx3_header_glo_slot_frq_chn__(glo_slot_freq_chns):
 
 # -----------------------------------------------------------------------------
 
+def __write_rnx3_header_glo_cod_phs_bis__(glo_cod_phs_bis):
+    """
+
+    :param glo_cod_phs_bis: Dictionary containing code phase bias
+    :return: RINEX V3.03 lines with GLO code phase bias
+    """
+
+    TAIL = "GLONASS COD/PHS/BIS#"
+    res = ""
+
+    if glo_cod_phs_bis is {}:
+        res = "{0:60s}{1}\n".format(res, TAIL)
+    else:
+        for cod_phs_bis in glo_cod_phs_bis:
+            res += "{ 0:3s 1:8.3f}".format(cod_phs_bis, glo_cod_phs_bis[cod_phs_bis])
+        res = "{0:60s}{1}\n".format(res, TAIL)
+
+    return res
+
+# -----------------------------------------------------------------------------
+
 def __write_rnx3_header_end__():
     """
     """
@@ -249,7 +270,7 @@ def write_header(obslist, firstepoch, ver=3.03, typ="O", pgm="Rokubun", markerna
                  rec="unknown", rec_type="unknown", rec_version="unkown",
                  antenna="unknown", ant_type="unknown",
                  pos=[0.0, 0.0, 0.0], hen=[0.0, 0.0, 0.0], lastepoch=None,
-                 glo_slot_freq_chns={}):
+                 glo_slot_freq_chns={}, glo_cod_phs_bis={}):
     """
     """
 
@@ -265,8 +286,8 @@ def write_header(obslist, firstepoch, ver=3.03, typ="O", pgm="Rokubun", markerna
     res += __write_rnx3_header_obslist__(obslist)
     res += __write_rnx3_header_firstobs__(firstepoch)
     res += __write_rnx3_header_lastobs__(lastepoch)
-    # res += __write_rnx3_header_lastobs__(sys_phase_shift)
     res += __write_rnx3_header_glo_slot_frq_chn__(glo_slot_freq_chns)
+    res += __write_rnx3_header_glo_cod_phs_bis__(glo_cod_phs_bis)
     res += __write_rnx3_header_end__()
 
     return res

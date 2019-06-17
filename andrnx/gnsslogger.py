@@ -393,6 +393,19 @@ def get_glo_freq_chn_list(batches):
 # ------------------------------------------------------------------------------
 
 
+def get_glo_cod_phs_bis_list(batches):
+    """
+    Obtain the GLO code phase bias for the receiver used. This is unknown for the moment
+
+    """
+
+    cod_phs_bis_list = {}
+
+    return cod_phs_bis_list
+
+# ------------------------------------------------------------------------------
+
+
 def check_state(measurement):
     """
     Checks if measurement is valid or not based on the Sync bits

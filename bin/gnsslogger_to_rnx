@@ -84,6 +84,9 @@ if __name__ == "__main__":
     # Get GLONASS freq channel and prn list
     glo_freq_chns = alogger.get_glo_freq_chn_list(raw_batches)
 
+    # Get GLONASS freq channel and prn list
+    glo_cod_phs_bis = alogger.get_glo_cod_phs_bis_list(raw_batches)
+
     # Write header and body
     header = arinex.write_header(obslist,
                                  firstepoch=batches[0]['epoch'],
@@ -98,7 +101,8 @@ if __name__ == "__main__":
                                  ant_type=args.antenna_type,
                                  pos=[0.0, 0.0, 0.0],
                                  hen=[0.0, 0.0, 0.0],
-                                 glo_slot_freq_chns = glo_freq_chns)
+                                 glo_slot_freq_chns=glo_freq_chns,
+                                 glo_cod_phs_bis=glo_cod_phs_bis)
     body = ''.join([arinex.write_obs(b, obslist) for b in batches])
 
     # Write to output
