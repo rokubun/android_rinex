@@ -78,6 +78,8 @@ if __name__ == "__main__":
 
     batches = [alogger.merge([proc(m) for m in rm]) for rm in raw_batches]
 
+    # Filter out batches with None entries
+
     # Get a list of the available observations
     obslist = alogger.get_obslist(raw_batches)
 

@@ -28,6 +28,13 @@ STATE_TOW_DECODED = int(0x00000008)
 STATE_TOW_KNOWN = int(0x00004000)
 STATE_UNKNOWN = int(0x00000000)
 
+ADR_STATE_UNKNOWN = int(0x00000000)
+ADR_STATE_VALID = int(0x00000001)
+ADR_STATE_RESET = int(0x00000002)
+ADR_STATE_HALF_CYCLE_RESOLVED = int(0x00000008)
+ADR_STATE_HALF_CYCLE_REPORTED = int(0x00000010)
+ADR_STATE_CYCLE_SLIP = int(0x00000004)
+
 
 # Define constants
 SPEED_OF_LIGHT = 299792458.0  # [m/s]
@@ -139,7 +146,6 @@ class GnssLogHeader(object):
         # Clean superfluous spaces
         self.parameters = { k:self.parameters[k].strip() for k in self.parameters }
 
-
     def parse_fix(self, line):
 
         self.get_fieldnames(line)
@@ -148,7 +154,6 @@ class GnssLogHeader(object):
         """
         """
         self.get_fieldnames(line)
-
 
     def parse_nav(self, line):
         """
@@ -405,8 +410,21 @@ def get_glo_cod_phs_bis_list(batches):
 
 # ------------------------------------------------------------------------------
 
+def check_adr_state(measurement):
+    """
+    Checks if measurement is valid or not based on the Sync bits
+    """
+    # Obtain state, constellation type and frquency value to apply proper sync state
+    state = measurement['AccumulatedDeltaRangeState']
 
-def check_state(measurement):
+    if (state & ADR_STATE_VALID) == 0:
+        raise ValueError("ADR State [ 0x{0:2x} {0:8b} ] has ADR_STATE_VALID [ 0x{1:2x} {1:8b} ] not valid".format(state, ADR_STATE_VALID))
+
+    return True
+
+# ------------------------------------------------------------------------------
+
+def check_sync_state(measurement):
     """
     Checks if measurement is valid or not based on the Sync bits
     """
@@ -452,8 +470,8 @@ def check_state(measurement):
         if (state & STATE_CODE_LOCK) == 0:
             raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_CODE_LOCK [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_CODE_LOCK))
 
-        # if (state & STATE_SYMBOL_SYNC) == 0:
-        #    raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_SYMBOL_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_SYMBOL_SYNC))
+        if (state & STATE_SYMBOL_SYNC) == 0:
+            raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_SYMBOL_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_SYMBOL_SYNC))
 
         if (state & STATE_BIT_SYNC) == 0:
             raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_BIT_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_BIT_SYNC))
@@ -604,14 +622,7 @@ def process(measurement, fullbiasnanos=None, integerize=False, pseudorange_bias=
 
     obscode = get_obscode(measurement)
 
-    # Skip this measurement if no sync
-    try:
-        check_state(measurement)
-    except ValueError as e:
-        sys.stderr.write("-- WARNING: {0} for satellite [ {1} ]\n".format(e, satname))
-
-    # Set the fullbiasnanos if not set or if we need to update the full bias
-    # nanos at each epoch
+    # Set the fullbiasnanos if not set or if we need to update the fullbiasnanos at each epoch
     fullbiasnanos = measurement['FullBiasNanos'] if fullbiasnanos is None else fullbiasnanos
 
     # Obtain time nanos and bias nanos. Skip if None
@@ -625,8 +636,7 @@ def process(measurement, fullbiasnanos=None, integerize=False, pseudorange_bias=
     except ValueError:
         biasnanos = 0.0
 
-    # Compute the GPS week number as well as the time within the week of
-    # the reception time (i.e. clock epoch)
+    # Compute the GPS week number and reception time (i.e. clock epoch)
     gpsweek = math.floor(-fullbiasnanos * NS_TO_S / GPS_WEEKSECS)
     local_est_GPS_time = timenanos - (fullbiasnanos + biasnanos)
     gpssow = local_est_GPS_time * NS_TO_S - gpsweek * GPS_WEEKSECS
@@ -645,43 +655,58 @@ def process(measurement, fullbiasnanos=None, integerize=False, pseudorange_bias=
     # Compute the reception times
     tRxSeconds = gpssow - timeoffsetnanos * NS_TO_S
 
-    # Compute transmit time (depends on constellation of origin)
-    constellation = measurement['ConstellationType']
-    # GLOT is given as TOD, need to change to TOW
-    if constellation == CONSTELLATION_GLONASS:
-        # Compute the UTC time
-        tod_secs = measurement['ReceivedSvTimeNanos'] * NS_TO_S
-        tTxSeconds = glot_to_gpst(gpst_epoch, tod_secs)
-        # Compute the travel time, which will be eventually the pseudorange
-        tau = check_week_crossover(tRxSeconds, tTxSeconds)
-
-    # BDST uses different epoch as GPS
-    elif constellation == CONSTELLATION_BEIDOU:
-        tTxSeconds = measurement['ReceivedSvTimeNanos'] * NS_TO_S + BDST_TO_GPST
-        # Compute the travel time, which will be eventually the pseudorange
-        tau = check_week_crossover(tRxSeconds, tTxSeconds)
-
-    # GPS, QZSS, GAL and SBAS share the same epoch time
-    else:
-        tTxSeconds = measurement['ReceivedSvTimeNanos'] * NS_TO_S
-        # Compute the travel time, which will be eventually the pseudorange
-        tau = check_week_crossover(tRxSeconds, tTxSeconds)
-
-    # Compute the range as the difference between the received time and
-    # the transmitted time
-    range = tau * SPEED_OF_LIGHT - pseudorange_bias;
-
-    # Check if the range needs to be modified with the range rate in
-    # order to make it consistent with the timestamp
-    if integerize:
-        range -= frac * measurement['PseudorangeRateMetersPerSecond']
-
+    # Compute wavelength for metric conversion in cycles
     wavelength = SPEED_OF_LIGHT / get_frequency(measurement)
 
-    # Process the accumulated delta range (i.e. carrier phase). This
-    # needs to be translated from meters to cycles (i.e. RINEX format
-    # specification)
-    cphase = measurement['AccumulatedDeltaRangeMeters'] / wavelength
+    # Check sync state of the satellite for range computation
+    try:
+        check_sync_state(measurement)
+    except ValueError as e:
+        sys.stderr.write("-- WARNING: {0} for satellite [ {1} ]\n".format(e, satname))
+        range = 0
+    else:
+        # Compute transmit time (depends on constellation of origin)
+        constellation = measurement['ConstellationType']
+        # GLOT is given as TOD, need to change to TOW
+        if constellation == CONSTELLATION_GLONASS:
+            # Compute the UTC time
+            tod_secs = measurement['ReceivedSvTimeNanos'] * NS_TO_S
+            tTxSeconds = glot_to_gpst(gpst_epoch, tod_secs)
+            # Compute the travel time, which will be eventually the pseudorange
+            tau = check_week_crossover(tRxSeconds, tTxSeconds)
+
+        # BDST uses different epoch as GPS
+        elif constellation == CONSTELLATION_BEIDOU:
+            tTxSeconds = measurement['ReceivedSvTimeNanos'] * NS_TO_S + BDST_TO_GPST
+            # Compute the travel time, which will be eventually the pseudorange
+            tau = check_week_crossover(tRxSeconds, tTxSeconds)
+
+        # GPS, QZSS, GAL and SBAS share the same epoch time
+        else:
+            tTxSeconds = measurement['ReceivedSvTimeNanos'] * NS_TO_S
+            # Compute the travel time, which will be eventually the pseudorange
+            tau = check_week_crossover(tRxSeconds, tTxSeconds)
+
+        # Compute the range as the difference between the received time and
+        # the transmitted time
+        range = tau * SPEED_OF_LIGHT - pseudorange_bias;
+
+        # Check if the range needs to be modified with the range rate in
+        # order to make it consistent with the timestamp
+        if integerize:
+            range -= frac * measurement['PseudorangeRateMetersPerSecond']
+
+    # Check ADR state of the satellite for carrier phase computation
+    try:
+        check_adr_state(measurement)
+    except ValueError as e:
+        sys.stderr.write("-- WARNING: {0} for satellite [ {1} ]\n".format(e, satname))
+        cphase = 0
+    else:
+        # Process the accumulated delta range (i.e. carrier phase). This
+        # needs to be translated from meters to cycles (i.e. RINEX format
+        # specification)
+        cphase = measurement['AccumulatedDeltaRangeMeters'] / wavelength
 
     doppler = - measurement['PseudorangeRateMetersPerSecond'] / wavelength
 
@@ -731,18 +756,11 @@ def glot_to_gpst(gpst_current_epoch, tod_seconds):
                                 month=glo_epoch.month,
                                 day=glo_epoch.day) + datetime.timedelta(seconds=tod_sec)
 
-    # Convert the GLONASS time to the GPS time epoch
-    glo_gpst = glo_tod + datetime.timedelta(hours=-3,
-                                            seconds=CURRENT_GPS_LEAP_SECOND)
-
     # The day of week in seconds needs to reflect the time passed before the current day starts
-    day_of_week_sec = (glo_gpst.isoweekday()) * DAYSEC
-
-    # Compute seconds of day (correct UTC offset and Leap seconds)
-    day_sec = tod_seconds - GLOT_TO_UTC + CURRENT_GPS_LEAP_SECOND
+    day_of_week_sec = (glo_tod.isoweekday()) * DAYSEC
 
     # Compute time of week in seconds
-    tow_sec = day_of_week_sec + day_sec
+    tow_sec = day_of_week_sec + tod_seconds - GLOT_TO_UTC + CURRENT_GPS_LEAP_SECOND
 
     return tow_sec
 
