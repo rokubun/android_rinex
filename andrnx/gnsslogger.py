@@ -272,12 +272,15 @@ def get_rnx_band_from_freq(frequency):
     # Backwards compatibility with empty fields (assume GPS L1)
     ifreq = 154 if frequency == '' else round(frequency / 10.23e6)
 
-    if ifreq >= 152: #in some RAW datasets there are GLO freq below 154
+    # QZSS L1 (154), GPS L1 (154), GAL E1 (154), and GLO L1 (156)
+    if ifreq >= 154:
         return 1
+    # QZSS L5 (115), GPS L5 (115), GAL E5 (115)
     elif ifreq == 115:
         return 5
-    elif ifreq == round(152.6):  # Beidou 'B1' frequency
-        return 2  # Rinex 3 band for B1 is 2
+    # BDS B1I (153)
+    elif ifreq == 153:
+        return 2
     else:
         raise ValueError("Cannot get Rinex frequency band from frequency [ {0} ]. "
         "Got the following integer frequency multiplier [ {1:.2f} ]\n".format(frequency, ifreq))
@@ -287,7 +290,7 @@ def get_rnx_band_from_freq(frequency):
 # ------------------------------------------------------------------------------
 
 
-def get_rnx_attr(band, constellation='G'):
+def get_rnx_attr(band, constellation='G', state=0x00):
     """
     Generate the RINEX 3 attribute from a given band. Assumes 'C' for L1/E1
     frequency and 'Q' for L5/E5a frequency. For E5a it assumes Q tracking.
@@ -295,10 +298,17 @@ def get_rnx_attr(band, constellation='G'):
 
     attr = 'C'
 
+    # Make distinction between GAL E1C and E1B code
+    if band == 1 and constellation == 'E':
+        if (state & STATE_GAL_E1C_2ND_CODE_LOCK) == 0 and (state & STATE_GAL_E1B_PAGE_SYNC) != 0:
+            attr = 'B'
+
+    # GAL E5, QZSS L5, and GPS L5 (Q)
     if band == 5:
         attr = 'Q'
 
-    if band ==2 and constellation=='C': # Beidou B1
+    # BDS B1I
+    if band == 2 and constellation == 'C':
         attr = 'I'
 
     return attr
@@ -325,7 +335,7 @@ def get_obscode(measurement):
 
     band = get_rnx_band_from_freq(get_frequency(measurement))
 
-    attr = get_rnx_attr(band, constellation=get_constellation(measurement))
+    attr = get_rnx_attr(band, constellation=get_constellation(measurement), state=measurement['State'])
 
     return '{0}{1}'.format(band, attr)
 
@@ -514,14 +524,23 @@ def check_sync_state(measurement):
             if (state & STATE_GAL_E1BC_CODE_LOCK) == 0:
                 raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_GAL_E1BC_CODE_LOCK [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_GAL_E1BC_CODE_LOCK))
 
-            if (state & STATE_TOW_DECODED) == 0:
-                raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_TOW_DECODED [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_TOW_DECODED))
+            # State value indicates presence of E1B code
+            if (state & STATE_GAL_E1C_2ND_CODE_LOCK) == 0:
+                if (state & STATE_TOW_DECODED) == 0:
+                    raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_TOW_DECODED [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_TOW_DECODED))
 
-            if (state & STATE_BIT_SYNC) == 0:
-                raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_BIT_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_BIT_SYNC))
+                if (state & STATE_BIT_SYNC) == 0:
+                    raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_BIT_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_BIT_SYNC))
 
-            if (state & STATE_GAL_E1B_PAGE_SYNC) == 0:
-                raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_GAL_E1B_PAGE_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_GAL_E1B_PAGE_SYNC))
+                if (state & STATE_GAL_E1B_PAGE_SYNC) == 0:
+                    raise ValueError("State [ 0x{0:2x} {0:8b} ] has STATE_GAL_E1B_PAGE_SYNC [ 0x{1:2x} {1:8b} ] not valid".format(state, STATE_GAL_E1B_PAGE_SYNC))
+
+            # State value indicates presence of E1C code
+            else:
+                if (state & STATE_GAL_E1C_2ND_CODE_LOCK) == 0:
+                    raise ValueError(
+                        "State [ 0x{0:2x} {0:8b} ] has STATE_GAL_E1BC_CODE_LOCK [ 0x{1:2x} {1:8b} ] not valid".format(
+                            state, STATE_GAL_E1C_2ND_CODE_LOCK))
         # Measurement is E5a
         elif frequency_band == 5:
             if (state & STATE_CODE_LOCK) == 0:
