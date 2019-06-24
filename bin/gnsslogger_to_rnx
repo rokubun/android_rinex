@@ -58,6 +58,10 @@ if __name__ == "__main__":
                              "the range to the integer epoch as well and thus, "+
                              "maintain the consistency between time stamp and "+
                              "measurement. By default, this option is deactivated")
+    parser.add_argument('--filter-mode',  metavar='<str>', type=str, default="sync",
+                        help="Specify the filtering mode for the data. Options include"
+                             "sync: TOW/TOD known, code locked, no ambiguities detected, and all remaining flags for the signal are set"
+                             "trck: TOW/TOD known, code locked and no ambiguities are detected")
 
     args = parser.parse_args()
 
@@ -74,7 +78,8 @@ if __name__ == "__main__":
     proc = lambda m : alogger.process(m,
                                       fullbiasnanos=fullbiasnanos,
                                       integerize=args.integerize,
-                                      pseudorange_bias=args.pseudorange_bias)
+                                      pseudorange_bias=args.pseudorange_bias,
+                                      filter_mode=args.filter_mode)
 
     batches = [alogger.merge([proc(m) for m in rm]) for rm in raw_batches]
 
