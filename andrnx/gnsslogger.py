@@ -6,6 +6,7 @@ import datetime
 import math
 import re
 import sys
+import warnings
 
 # Flags to check wether the measurement is correct or not
 # https://developer.android.com/reference/android/location/GnssMeasurement.html#getState()
@@ -103,8 +104,11 @@ class GnssLogHeader(object):
 
                         method_name = 'parse_{0}'.format(fields[1].lower())
 
-                        # Call the method that processes the line
-                        getattr(GnssLogHeader, method_name)(self, line)
+                        try:
+                            # Call the method that processes the line
+                            getattr(GnssLogHeader, method_name)(self, line)
+                        except AttributeError as e:
+                            warnings.warn(f"Property {method_name} unknown to any method")
 
 
     def get_fieldnames(self, line):
@@ -401,7 +405,7 @@ def get_glo_freq_chn_list(batches):
                 except ValueError as e:
                     sys.stderr.write("{0}\n".format(e))
                     continue
-                
+
                 if sat not in freq_chn_list:
                     freq = get_frequency(measurement)
                     freq_chn = round((freq - GLO_L1_CENTER_FREQ)/GLO_L1_DFREQ)
@@ -914,7 +918,7 @@ def process(measurement, fullbiasnanos=None, integerize=False, pseudorange_bias=
 
 def get_leap_seconds(current_epoch):
     """
-    Computes the number of leap seconds passed since the start of GPST 
+    Computes the number of leap seconds passed since the start of GPST
     :param current_epoch: current datetime value representing the measurements epoch
     :return: number of leap seconds since GPST
     """
