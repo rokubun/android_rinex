@@ -146,8 +146,36 @@ class GnssLogHeader(object):
         # Clean superfluous spaces
         self.parameters = { k:self.parameters[k].strip() for k in self.parameters }
 
+    def parse_(self, line):
+        
+        self.get_fieldnames(line)
+        
+    def parse_location(self, line):
+        
+        self.get_fieldnames(line)
+    
+    def parse_nmea(self, line):
+        
+        self.get_fieldnames(line)
+    
+    def parse_gnssantennainfo(self, line):
+        
+        self.get_fieldnames(line)
+    
+    def parse_gnssstatus(self, line):
+        
+        self.get_fieldnames(line)
+    
+    def parse_orientation(self, line):
+        
+        self.get_fieldnames(line)
+                   
+    def parse_navigation(self, line):
+        
+        self.get_fieldnames(line)
+                
     def parse_fix(self, line):
-
+    
         self.get_fieldnames(line)
 
     def parse_raw(self, line):
@@ -159,6 +187,56 @@ class GnssLogHeader(object):
         """
         """
         self.get_fieldnames(line)
+    
+    def parse_uncalaccel(self, line):
+        """
+        """
+        self.get_fieldnames(line)
+    
+    def parse_accel(self, line):
+        """
+        """
+        self.get_fieldnames(line)
+
+    def parse_uncalgyro(self, line):
+        """
+        """
+        self.get_fieldnames(line)
+
+    def parse_gyro(self, line):
+        """
+        """
+        self.get_fieldnames(line)
+    
+    def parse_uncalmag(self, line):
+        """
+        """
+        self.get_fieldnames(line)
+ 
+    def parse_mag(self, line):
+        """
+        """
+        self.get_fieldnames(line)
+    
+    def parse_pressure(self, line):
+        """
+        """
+        self.get_fieldnames(line)
+
+    def parse_orientationdeg(self, line):
+        """
+        """
+        self.get_fieldnames(line)
+    
+    def parse_status(self, line):
+        """
+        """
+        self.get_fieldnames(line)
+
+    def parse_agc(self, line):
+        """
+        """
+        self.get_fieldnames(line) 
 
 # ------------------------------------------------------------------------------
 
@@ -781,7 +859,7 @@ def get_satname(measurement):
 # ------------------------------------------------------------------------------
 
 
-def process(measurement, fullbiasnanos=None, integerize=False, pseudorange_bias=0.0, filter_mode="sync"):
+def process(measurement, fullbiasnanos=0.0, integerize=False, pseudorange_bias=0.0, filter_mode="sync"):
     """
     Process a log measurement. This method computes the pseudorange, carrier-phase (in cycles)
     Doppler (cycles/s) as well as CN/0
@@ -809,31 +887,37 @@ def process(measurement, fullbiasnanos=None, integerize=False, pseudorange_bias=
 
     obscode = get_obscode(measurement)
 
-    # Set the fullbiasnanos if not set or if we need to update the fullbiasnanos at each epoch
-    fullbiasnanos = measurement['FullBiasNanos'] if fullbiasnanos is None else fullbiasnanos
-
     # Obtain time nanos and bias nanos. Skip if None
     try:
         timenanos = float(measurement['TimeNanos'])
     except ValueError:
         raise ValueError("-- WARNING: Invalid value of TimeNanos or satellite  [ {0} ]\n".format(satname))
-
+    
+    try:
+        fullbiasnanos = float(measurement['FullBiasNanos'])
+        if fullbiasnanos is None:
+            fullbiasnanos = 0.0
+    except ValueError:
+        fullbiasnanos = 0.0
+        
     try:
         biasnanos = float(measurement['BiasNanos'])
+        if biasnanos is None:
+            biasnanos = 0.0
     except ValueError:
         biasnanos = 0.0
-
+    
     # Compute the GPS week number and reception time (i.e. clock epoch)
-    gpsweek = math.floor(-fullbiasnanos * NS_TO_S / GPS_WEEKSECS)
+    gpsweek = math.floor(-0.0 * NS_TO_S / GPS_WEEKSECS)
     local_est_GPS_time = timenanos - (fullbiasnanos + biasnanos)
     gpssow = local_est_GPS_time * NS_TO_S - gpsweek * GPS_WEEKSECS
-
+    
     # Fractional part of the integer seconds
     frac = gpssow - int(gpssow+0.5) if integerize else 0.0
 
     # Convert the epoch to Python's buiit-in datetime class
     gpst_epoch = GPSTIME + datetime.timedelta(weeks=gpsweek, seconds=gpssow-frac)
-
+    
     try:
         timeoffsetnanos = float(measurement['TimeOffsetNanos'])
     except ValueError:
@@ -842,6 +926,7 @@ def process(measurement, fullbiasnanos=None, integerize=False, pseudorange_bias=
     # Compute the reception times
     tRxSeconds = gpssow - timeoffsetnanos * NS_TO_S
 
+    
     # Compute wavelength for metric conversion in cycles
     wavelength = SPEED_OF_LIGHT / get_frequency(measurement)
 
@@ -1015,9 +1100,9 @@ def merge(measdict):
     """
 
     res = None
-
+    print(measdict)
     for m in measdict:
-
+        print(m)
         # Skip empty measurements
         if m is None:
             continue
@@ -1048,7 +1133,7 @@ def merge(measdict):
                 res[sat].update(m[sat])
             else:
                 res[sat] = m[sat]
-
+    print(res)
     return res
 
 # ------------------------------------------------------------------------------
